@@ -1,0 +1,133 @@
+#!/bin/bash
+# Установить пакет perl-JSON-PP
+
+# debug
+_urlPrefix="http://localhost:28080"
+
+# serbia
+#_urlPrefix="http://192.168.56.204:28080/odb-admin"
+_user="m.mahonin"
+_password="12345678"
+_token=""
+
+getDate(){
+	echo -e "$(date +%Y/%m/%d\ %H:%M:%S)"
+}
+
+run(){
+	# url контроллера ОБД
+	rm -rf ./_auth.txt
+	# Просим curl сохранять куки после первой успешной авторизации чтобы не сбрасывалась сессия
+	url="$_urlPrefix/api/user/login?username=$_user&password=$_password&remember-me=true"
+	echo url="$url" | /usr/bin/curl --cookie-jar ./cookies.txt -f -s -X POST -v -K - --trace-ascii ./_auth.txt 2>&1
+	parserAuth ./_auth.txt ${url}
+	_statusParserAuth=$?
+	if [[ $_statusParserAuth == "0" ]]
+	then
+		rm -rf ./_auth.txt
+		echo -e "[ $(getDate) ] Авторизация [ok]. Токен сессии получен $_token"
+		runAfterSuccessAuth
+	else 
+		echo -e "[ $(getDate) ] Авторизация [fail]"
+		exit 1
+	fi
+
+	# Подчищаем все за собой
+	#rm -rf /tmp/$_rltProName
+	rm -rf ./_convertation.txt
+	rm -rf ./_response.txt
+	rm -rf ./cookies.txt
+
+	#exit 0
+}
+
+runAfterSuccessAuth(){
+	# Для каждого запроса нужно указывать файл с куками т.к. в нем токен
+	#curl --cookie ./cookies.txt --cookie-jar ./cookies.txt -X GET -s "$_urlPrefix/api/user/current-user" 2>&1 >> ./response.txt
+	#curl --cookie ./cookies.txt --cookie-jar ./cookies.txt -X GET -s "$_urlPrefix/api/user/current-user"
+
+################################################################### Конвертация проекта Сириус-Ис ###################################################################################
+	url="$_urlPrefix/api/admin-sirius-gen-service/gen"
+	curl -o ./_response.txt -H "Content-Type: application/json" \
+  		-X POST \
+  		-d '{	"name":"project", 
+				"optionApplyScaling":"false",
+				"optionApplyShortName":"true", 
+			 	"optionCreateFileRltStudio": "true",
+				"optionCutHier":"false",
+				"optionIncludePGUIDS":"false", 
+			 	"optionReplaceName":"true",
+				"optionUpdateVTI":"false",
+				"optionUploadProject":"false",
+				"optionUseAnalytics":"false" 
+			}' \
+		--cookie ./cookies.txt --cookie-jar ./cookies.txt -f -s "$_urlPrefix/api/admin-sirius-gen-service/gen" --trace-ascii ./_convertation.txt
+
+	_rltProName=`cat ./_response.txt | awk -F "result" '{print $2}' | sed 's/>\|<\///g'`
+	( echo -e "[ $(getDate) ] Конвертация проекта $_rltProName завершена [ok]" && cp -r /tmp/${_rltProName} /mnt/tmp && echo -e "[ $(getDate) ] Проект скопирован в /mnt/tmp")
+########################################################################################################################################################################################
+
+
+
+}
+
+parserAuth(){
+	#echo -e "call parserAuth"
+	_status=`cat $1`
+	_url=$2
+	if [[ -z "$_status" ]]
+	then
+		_status="FAIL"
+	else 
+		_statusAnswer=`echo -e $_status |awk -F "Recv" '{print $2}'`
+		_httpVersion=`echo ${_statusAnswer#*"HTTP/"} | awk '{print $1}'`
+		_httpAnswerCode=`echo ${_statusAnswer#*"HTTP/"} | awk '{print $2}'`
+		if [[ $_httpAnswerCode == "200" ]]
+		then
+			echo -e "[ $(getDate) ] ${_url} : HTTP/v$_httpVersion -> $_httpAnswerCode"
+			_token=`echo ${_status#*"ODB_ADMIN_JSESSIONID"} | awk '{print $1}' | awk -F "=" '{print $2}'`
+			return 0
+		fi
+	fi
+	return 1
+}
+
+parser(){
+	_testData="$1"
+	local _status=""
+	if [[ -z "$_testData" ]]
+	then
+		_status="FAIL"
+	else 
+		_answer=`cat $_testData | awk -F "title" '{print $2}' | tail -1 | sed 's/>\|<\///g'`
+		_answerCode=`echo $_answer | awk -F " " '{print $3}'`
+	fi
+	_descriptionMsg=""
+
+	case $_answerCode in
+     405)
+          _descriptionMsg="Нельзя вызвать этот url"
+          ;;
+     404)
+          _descriptionMsg="Страница не найдена"
+          ;;
+     403)
+          _descriptionMsg="Проверь авторизацию. см. куку ODB_ADMIN_JSESSIONID"
+          ;;
+     200)
+		_descriptionMsg="Ответ получен"
+          ;; 
+     *)
+          _descriptionMsg="Код возврата не найден"
+          ;;
+esac
+	
+	echo -e "Код ответа от Web сервера = $_answerCode. Описание: $_descriptionMsg"
+}
+
+#while true
+#do
+	run
+#	sleep 0.1s
+#done
+

@@ -1,0 +1,60 @@
+
+gitDiff(){
+	#Откроет meld с разницей между start и end коммитами
+	# start и end можно передавать через HEAD HEAD~1...n
+	local start="$1"
+	local end="$2"
+	local countArgs=$#
+	if [[ ($countArgs < 2) ]]
+	then
+		echo -e "Неверное количество аргументов. Минимальное количество 2. Например: gd HEAD~1 HEAD или gd HEAD~1 HEAD <Dir>"
+	else
+		git difftool --dir-diff $start $end
+	fi
+}
+
+gitLog(){
+	git log --reflog
+}
+
+gitLogHashesPretty(){
+	#Варианты pretty: short full fuller
+	git log --reflog --pretty=short
+}
+
+gitLogOwnFormat(){
+	echo -e "История по ветке: " && git branch | grep "*" | awk '{print $2}'
+	git log --source --pretty=format:"%h - %aI : %s" --graph
+}
+
+gitSquash(){
+	local hash="$1"
+	git reset --soft  $hash
+	git commit -m
+}
+
+gitDelete(){
+	local _branch="$1"
+	git branch -d $_branch
+}
+
+gitClean(){
+	local _dir="$1"
+	#x - Очистить по маске из gitignore, d - чистить не отслеживаемые файлы и папки, f - force
+	git clean -xdf $_dir
+}
+
+gitTree(){
+	#git log --graph --pretty=oneline --abbrev-commit --all
+	git log --graph --simplify-by-decoration --pretty=format:'%d' --all
+}
+
+gl(){
+	local args=( "$@" )
+	if (( ${#args[@]} < 1 ))
+	then
+		echo -e "Ошибка: нет аргументов. Пример: gl <Количество коммитов>" 
+	fi
+	
+	git log -n${args[0]} --pretty='format:%d  %<(20)[ %C(#236e26)%cd%C(reset) ]: %C(#615f03)%an%C(reset) : %h %C(#de0711)[ Описание:%C(reset)  %C(#c47104)%s%C(reset) %C(#de0711)]%C(reset)' --date=format:'%Y/%m/%dT%H:%M:%S' --graph --branches --parents
+}

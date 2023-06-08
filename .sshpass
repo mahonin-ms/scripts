@@ -1,0 +1,35 @@
+#Сервера ЛПУ
+rlt|192.168.20.25|SiriusIS2023!|lpu-main
+rlt|192.168.20.26|SiriusIS2023!|lpu-reserve
+
+#Сервера ЦДП
+rlt|192.168.20.23|SiriusIS2023!|cdp-main
+rlt|192.168.20.24|SiriusIS2023!|cdp-reserve
+rlt|192.168.20.21|SiriusIS2023!|cdp-app-1
+rlt|192.168.20.22|SiriusIS2023!|cdp-app-2
+
+#АРМы ЛПУ
+rlt|192.168.20.36|SiriusIS2023!|lpu-arm-1
+rlt|192.168.20.37|SiriusIS2023!|lpu-arm-2
+
+#АРМы ЦДП
+rlt|192.168.20.34|SiriusIS2023!|cdp-arm-1
+rlt|192.168.20.35|SiriusIS2023!|cdp-arm-2
+
+#РДП
+rlt|192.168.20.20|SiriusIS2023!|rdp-serv
+rlt|192.168.20.38|SiriusIS2023!|arm-rdp
+
+
+#Сервер разработки
+rlt|192.168.56.204|qnx425|dev
+
+
+rlt|192.168.20.32|SiriusIS2023!|arm-adm-cdp
+rlt|192.168.20.33|SiriusIs2023!|arm-adm-lpu
+
+#Локальный линукс
+rlt|127.0.0.1|111|localhost
+
+#Админка ГТБ
+rlt|192.168.56.56|qnx425|gtb

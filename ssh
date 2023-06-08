@@ -1,0 +1,48 @@
+
+# Установить пакет sshpass: apt-get install sshpass
+# Не забыть в .bashrc добавить [[ -f $HOME/.ssh/ssh ]] source $HOME/.ssh/ssh + Положить файлик ssh в $HOME/.ssh
+
+#[ -f $HOME/.ssh/.sshpass ] && . $HOME/.ssh/.sshpass || exit 1
+FILE_PASSWD="$HOME/.ssh/.sshpass"
+
+getPass(){
+	local host=$1
+	#echo -e "getPass.args: $@"
+	args=($@)
+	(( ${#args[@]} < 1 )) && echo -e "no args -> exit" && exit 1
+
+	if [[ -f $FILE_PASSWD  ]]
+	then
+		local fields=$(cat ${FILE_PASSWD} | egrep -v "^#" | egrep "$host$" || exit 1)
+		local split_fields=$(echo -e "${fields[@]}" | awk -F '|' '{ for( i=1; i<=NF; i++ ) print $i}')
+		split_fields=($split_fields)
+
+		#echo -e "fields.size=${#fields[@]} : ${fields[@]}"
+		(( ${#split_fields[@]} < 3 )) && echo -e "host ${host} not found -> exit" && sleep 2 && exit 1
+		#[[ -z ${fields[@]} ]] || exit 1
+		local user ip password host
+		for field in ${fields[@]}
+		do
+			#echo -e "${field}"
+			 IFS=$'|' read -r user ip password host <<< "${field}"
+		done
+		#echo -e "user=${user}, ip=${ip}, password=${password}, host=${host}"
+		echo -e "${user} ${ip} ${password} ${host}"
+	else
+		exit 1
+	fi
+}
+
+
+ssh2(){
+	local args=($@)
+	args=$(getPass $@)
+	args=($args)
+	#echo -e "${args[@]}"
+	#echo -e "sshpass -p ${args[2]} ssh -Y -o StrictHostKeyChecking=no ${args[0]}@${args[1]}"
+	sshpass -p "${args[2]}" ssh -Y -o StrictHostKeyChecking=no ${args[0]}@${args[1]}
+}
+
+
+#ssh2 $(getPass $1)
+

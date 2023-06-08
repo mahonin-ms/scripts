@@ -1,0 +1,156 @@
+#!/bin/bash
+
+deployApacheEnable=1
+#deployApacheHosts=("localhost:$HOME/apache-tomcat-9" "gtb:$HOME/apache-tomcat-9" )
+deployApacheHosts=("localhost:$HOME/apache-tomcat-9" )
+
+FILE_PASSWD="$HOME/.ssh/.sshpass"
+
+
+colorRed=$(echo -e "\033[0;31m")
+colorBlue=$(echo -e "\033[0;36m")
+colorGreen=$(echo -e "\033[0;32m")
+colorEnd=$(echo -e "\033[0m")
+
+
+print_inf(){
+    echo -e $colorBlue"$@"$colorEnd
+}
+
+print_err(){
+    echo -e $colorRed"$@"$colorEnd
+}
+
+print_success(){
+    echo -e $colorGreen"$@"$colorEnd
+}
+
+
+getDate(){
+	echo -e "[ $(date +%Y/%m/%d\ %H:%M:%S) ]"
+}
+
+getPass(){
+	local host=$1
+	#echo -e "getPass.args: $@"
+	args=($@)
+	(( ${#args[@]} < 1 )) && echo -e "no args -> exit" && exit 1
+
+	if [[ -f $FILE_PASSWD  ]]
+	then
+		local fields=$(cat ${FILE_PASSWD} | egrep -v "^#" | egrep "$host$" || exit 1)
+		local split_fields=$(echo -e "${fields[@]}" | awk -F '|' '{ for( i=1; i<=NF; i++ ) print $i}')
+		split_fields=($split_fields)
+
+		#echo -e "fields.size=${#fields[@]} : ${fields[@]}"
+		(( ${#split_fields[@]} < 3 )) && echo -e "host ${host} not found -> exit" && sleep 2 && exit 1
+		#[[ -z ${fields[@]} ]] || exit 1
+		local user ip password host
+		for field in ${fields[@]}
+		do
+			#echo -e "${field}"
+			 IFS=$'|' read -r user ip password host <<< "${field}"
+		done
+		#echo -e "user=${user}, ip=${ip}, password=${password}, host=${host}"
+		echo -e "${user} ${ip} ${password} ${host}"
+	else
+		exit 1
+	fi
+}
+
+
+clearRepository(){
+    m2Files=(`ls $HOME/.m2/repository/$USER/`)
+    #echo -e "${#m2Files[*]} files"
+    (( ${#m2Files[*]} > 0 )) && rm -rf $HOME/.m2/repository/rlt/* && echo -e "$(getDate): $HOME/.m2/repository/rlt is cleared" || echo -e "$(getDate): $HOME/.m2/repository/rlt is empty"
+}
+
+build(){
+    local path="$1"
+    cd ${path}
+	#print_inf "$(getDate): build ${path}"
+	VERSION=$(mvn exec:exec -Dexec.executable='echo' -Dexec.args='${project.version}' --non-recursive -q)
+    mvn -DskipTests=true -Dfile.encoding=UTF-8 -q -DforceStdout clean install 2>&1 1>/dev/null
+	(( $? == 1 )) && print_err "$(getDate): build ${path} ${VERSION} [fail]" && return || print_success "$(getDate): build ${path} ${VERSION} [ok]"
+}
+
+# Для работы этой функции установить пакет sshpass
+# Положить в каталог $HOME/.ssh/ файлик .sshpass, данный формат файла считывает функция getPass
+deploy2Apache(){
+	local applicationLocalPath="$1"
+	local applicationNameWithExtention=$(echo -e "${applicationLocalPath}" | awk -F '/' '{print $NF}')
+	local applicationNameWithoutExtention=$(echo -e "${applicationNameWithExtention}" | awk -F '.' '{print $1}')
+	local existSshPass=$(rpm -qa | grep sshpass)
+
+	[[ -z ${existSshPass} ]] && echo -e "$(getDate): sshpass package is [fail]" && exit 1 || echo -e "$(getDate): sshpass package is [ok]"
+	[[ ! -f $HOME/.ssh/.sshpass ]] && echo -e "$(getDate): file $HOME/.ssh/.sshpass is [fail]" && exit 1 || echo -e "$(getDate): $HOME/.ssh/.sshpass is [ok]"
+
+	for item in ${deployApacheHosts[@]}
+	do
+		local splited=( $(echo "${item}" | sed 's/:/ /g') )
+		local host=${splited[0]}
+		local path=${splited[1]}
+		connection=$(getPass ${host}) && connection=( $connection )
+		if (( ${#connection[@]} == 4 ))
+		then
+					print_inf "deploy ${applicationNameWithExtention} to ${connection[1]}"
+					goal="sshpass -p '${connection[2]}' ssh -o StrictHostKeyChecking=no ${connection[0]}@${connection[1]} `
+						`'rm -rf ${path}/webapps/${applicationNameWithExtention} && rm -rf ${path}/webapps/${applicationNameWithoutExtention}'"
+					echo -e "$(getDate): ${goal}" && eval ${goal}
+					
+					goal="sshpass -p '${connection[2]}' scp ${applicationLocalPath} ${connection[0]}@${connection[1]}:${path}/webapps"
+					echo -e "$(getDate): ${goal}" && eval ${goal}
+
+		else
+			echo -e "$(getDate): function getPass is [fail]. Return ${#connection[@]} variables := ${connection[@]}"
+		fi
+		#sshpass -p 'your_password' scp user@abc.com:/usr/etc/Output/*.txt /usr/abc/
+		
+	done
+
+}
+
+
+main(){
+    
+    clearRepository
+	
+	local odb_path=$(find $HOME -maxdepth 5 -type d -name odb 2>/dev/null | head -1)
+	[[ -z ${odb_path} ]] && odb_path=$HOME/odb
+	[[ -d ${odb_path}/admin/target/ ]] && echo -e "$(getDate): clear ${odb_path}/admin/target" && rm -rf ${odb_path}/admin/target/*
+
+    build "${odb_path}/common"
+    build "${odb_path}/rlt-connector"
+    build "${odb_path}/rlt-project"
+    build "${odb_path}/admin"
+
+    local odb_admin_before="${odb_path}/admin/target/odb-admin-1.0-SNAPSHOT.war"
+    local odb_admin_after="${odb_path}/admin/target/odb-admin.war"
+
+
+	if [[ -f ${odb_admin_before} ]]
+	then
+
+		mv ${odb_admin_before} ${odb_admin_after}
+		echo -e "$(getDate): rename ${odb_admin_before} to ${odb_admin_after} [ok]"
+
+    	if (( ${deployApacheEnable} ))
+    	then
+			deploy2Apache ${odb_admin_after}
+    	fi
+
+	else
+
+		if [[ ! -f ${odb_admin_after} ]]
+		then
+			echo -e "$(getDate): rename ${odb_admin_before} to ${odb_admin_after} [fail]"
+		fi
+
+	fi
+    
+}
+
+main
+
+
+
