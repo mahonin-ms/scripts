@@ -1,0 +1,63 @@
+#!/bin/bash
+
+export DBHOST="localhost"
+declare -a Dbs=('postgres' 'gtb' 'serbia' 'chbs' 'mvisurgut') #('gtb' 'postgres' 'serbia' 'chbs')
+
+getFields(){
+	#Пример вызова cat /etc/fstab | getFields 1,2,3... или getFields ";" 1,2,3...
+	declare -a argv=`echo $@ | sed s/,/\ /g`
+	#echo "argv=${argv[@]}"
+	filtr=("")
+	if test $# -eq 0
+		then
+			echo -e "Example: cat /etc/fstab | getFields \";\" 1,2,3,... Arguments is number fields which you want view. Separator is option. cat /etc/fstab | getFields 1,2,3... "
+	elif test $# -eq 1
+		then
+			filtr=("awk '{print")
+			for arg in ${argv[@]}
+			do
+				filtr+=(`printf "$%s\" \"" $arg`)
+			done
+			filtr+=(`printf "}'"`)
+	elif test $# -eq 2
+		then
+			argv=`echo ${@:2:$(($#))} | sed s/,/\ /g`
+			filtr=("awk -F '$1' '{print")
+			for arg in ${argv[@]}
+			do
+				filtr+=(`printf "$%s\" \"" $arg`)
+			done
+			filtr+=(`printf "}'"`)
+	fi
+	#echo "${filtr[@]}"
+	local _stdin="$(< /dev/stdin)"
+	#echo "stdin: $_stdin"
+	execFiltr="`echo ${filtr[@]}`"
+	sudo sh -c "echo \"$_stdin\" | $execFiltr"
+}
+
+getConnections(){
+	for db in ${Dbs[@]}
+	do
+		echo "connections to $db"
+		command="SELECT * FROM pg_stat_activity;"
+		psql -h $DBHOST   -d $db --command="$command" | getFields "|" 2,5,7,9,12,15,18
+	done
+}
+killConnections(){
+	#declare -a localDbs=('gtb' 'serbia' 'postgres')
+	#for db in ${localDbs[@]}
+	for db in ${Dbs[@]}
+	do
+		echo "kill all connections to $db"
+		command="SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='$db' AND pid <> pg_backend_pid() AND state='idle';"
+		psql -h $DBHOST   -d $db --command="$command" > /dev/null
+	done
+}
+
+main(){
+	getConnections
+	killConnections
+}
+
+main
