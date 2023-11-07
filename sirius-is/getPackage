@@ -1,0 +1,45 @@
+#! /bin/bash
+
+DATE=`date +%Y-%m-%d\T%H_%M_%S`
+SRC_PKG_PATH="/home/rlt/PACKAGES/ALTLinux.9/sirius-is/ALTLinux.9_sirius-is_v2.7.21_HEAD_18100-3c1158304f"
+APP_NAME="spgmaster"
+DST_PKG_PATH="./${APP_NAME}_${DATE}.pkg"
+
+
+
+findByType(){
+	local xsd_path="$SRC_PKG_PATH/sirius-is/$1"
+	#etc
+	for _file in $(find $xsd_path -type f -name "*$APP_NAME*")
+	do
+		_full_file="echo -e "$_file" | awk -F '$SRC_PKG_PATH/' '{print \$2}'"
+		#echo -e "$_file" | awk -F "$SRC_PKG_PATH/" '{print $2}'
+		_relative_file=`eval $_full_file`
+		#echo -e "$_relative_file"
+		_dir=`echo ${_relative_file%/*}`
+		#echo -e "$_dir"
+		cpy="mkdir -p $DST_PKG_PATH/$_dir && yes | cp -i $_file $DST_PKG_PATH/$_dir"
+		echo -e "$cpy"
+		eval $cpy
+	done
+}
+
+
+
+
+
+main(){
+	echo $DATE
+	_rm="rm -rf ./$APP_NAME*"
+	eval $_rm
+	findByType "xsd"
+	findByType "etc/rep"
+	findByType "bin"
+	findByType "lib"
+
+	zip -r $DST_PKG_PATH.zip $DST_PKG_PATH 2>&1 1>>/dev/null
+}
+
+main
+
+
