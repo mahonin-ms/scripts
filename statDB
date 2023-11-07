@@ -1,7 +1,7 @@
 #!/bin/bash
 
 export DBHOST="localhost"
-declare -a Dbs=('postgres' 'gtb' 'serbia' 'chbs' 'mvisurgut') #('gtb' 'postgres' 'serbia' 'chbs')
+declare -a Dbs=('postgres' 'gtb' 'serbia' 'chbs' 'mvisurgut' 'gtb_src' 'gtb_dst' ) #('gtb' 'postgres' 'serbia' 'chbs')
 
 getFields(){
 	#Пример вызова cat /etc/fstab | getFields 1,2,3... или getFields ";" 1,2,3...
