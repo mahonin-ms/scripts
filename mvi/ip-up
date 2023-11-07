@@ -1,0 +1,209 @@
+#!/bin/sh
+
+# This file should not be modified -- make local changes to
+# /etc/ppp/ip-up.local instead
+
+# From pppd manpage:
+
+#       ipparam string
+#              Provides an extra parameter to the ip-up  and  ip-down  scripts.
+#              If this option is given, the string supplied is given as the 6th
+#              parameter to those scripts.
+
+#       usepeerdns
+#              Ask the peer for up to 2 DNS server  addresses.   The  addresses
+#              supplied  by  the peer (if any) are passed to the /etc/ppp/ip-up
+#              script in the environment variables DNS1 and DNS2, and the envi-
+#              ronment variable USEPEERDNS will be set to 1.  In addition, pppd
+#              will create an /etc/ppp/resolv.conf file containing one  or  two
+#              nameserver lines with the address(es) supplied by the peer.
+
+#       /etc/ppp/ip-up
+#              A program or script which is executed when the link is available
+#              for  sending  and  receiving  IP packets (that is, IPCP has come
+#              up).  It is executed with the parameters
+#
+#              interface-name  tty-device  speed  local-IP-address   remote-IP-
+#              address ipparam
+
+
+LOGDEVICE=$6
+REALDEVICE=$1
+NS_IFUP=/etc/sysconfig/network-scripts/ifup-post
+N_C_S_CONFIG=/etc/sysconfig/network
+RESOLVCONF=/sbin/resolvconf
+
+export PATH=/sbin:/usr/sbin:/bin:/usr/bin
+
+# To resolve long-standing bug #4249:
+# This script can be executed in different contexts.
+# 1st context: pppd run from command line with usepeerdns option.
+# In this case we must add nameserver lines.
+# 2nd context: pppd run by kppp with usepeerdns option. pppd will
+# save nameserver lines in /etc/ppp/resolv.conf and kppp will
+# modify /etc/resolv.conf itself. We must not touch resolv.conf.
+# 3rd context: pppd run by ifup-ppp script (ppp-watch actually).
+# The script may specify usepeerdns option (or may not). In this
+# case we must not change resolv.conf again, because we have a
+# ifcfg-ppp* config and ifup-post will do its job to modify
+# resolv.conf.
+# 4th context: pppd run by /etc/net/scripts/create-ppp.
+#
+# Let's have a quick global hack: handle RESOLV_MODS here like in
+# ifup-post.
+
+. /etc/init.d/functions
+SourceIfNotEmpty $N_C_S_CONFIG
+
+[ -z "$MS_DNS1" ] || DNS1=$MS_DNS1
+[ -z "$MS_DNS2" ] || DNS2=$MS_DNS2
+
+# taken from net-scripts
+modify_resolv_conf()
+{
+	local tr
+	if [ -n "$DNS1" ] && ! grep -qs "^nameserver $DNS1" /etc/resolv.conf &&
+		tr=$(mktemp -t resolv.conf.XXXXXXXXXX); then
+		# replace only the first two nameserver lines; cannot count on awk
+		# and do not know if sed is capable of this...
+		local current_replacement="$DNS1"
+		local next_replacement="$DNS2"
+		local search=
+		local answer
+		(cat /etc/resolv.conf ; echo EOF ; echo EOF) | while read answer ; do
+			case $answer in
+			nameserver*|EOF)
+				if [ -n "$current_replacement" ] ; then
+					echo "nameserver $current_replacement" >> $tr
+					if [ -n "$next_replacement" ] ; then
+						current_replacement="$next_replacement"
+						next_replacement=
+					else
+						current_replacement=
+					fi
+				else
+					if [ "$answer" != EOF ] ; then
+						echo "$answer" >> $tr
+					fi
+				fi
+			;;
+			domain*|search*)
+				if [ -n "$DOMAIN" ]; then
+					echo "$answer" | while read key value ; do
+						search="$search $value"
+					done
+				else
+					echo "$answer" >> $tr
+				fi
+			;;
+			*)
+				echo "$answer" >> $tr
+			;;
+			esac
+			if [ -n "$DOMAIN" ]; then
+				echo "search $DOMAIN $search" >> $tr
+			fi
+		done
+		# backup resolv.conf
+		cp -af /etc/resolv.conf /etc/resolv.conf.save.$REALDEVICE
+
+		# maintain permissions
+		# but set umask in case it doesn't exist!
+		oldumask=`umask`
+		umask 022
+		cat $tr > /etc/resolv.conf
+		rm -f $tr
+		umask $oldumask
+	fi
+}
+
+update_via_resolvconf()
+{
+	local t
+	t=$(mktemp -t resolv.conf.XXXXXXXXXX) || return
+	local d
+	for d in $DNS1 $DNS2; do
+		echo "nameserver $d"
+	done >"$t"
+	if [ -s "$t" ]; then
+		"$RESOLVCONF" -a "$REALDEVICE" <"$t"
+	fi
+	rm -f -- "$t"
+}
+
+if ! is_no "$RESOLV_MODS"; then
+	if [ -x "$RESOLVCONF" ]; then
+		update_via_resolvconf
+	else
+		# check if kppp was here, don't touch /etc/resolv.conf then, just UC
+		grep -iqs '#.*ppp temp entry' /etc/resolv.conf || modify_resolv_conf
+		UC=/usr/sbin/update_chrooted
+		[ -x $UC ] && $UC conf
+	fi
+fi
+
+case $CONFMETHOD in
+	etcnet)
+# Do nothing. /etc/net relies on updetach pppd option to continue configuring
+# ppp link on success.
+	;;
+	net-scripts)
+		$NS_IFUP "ifcfg-$LOGDEVICE"
+	;;
+	*)
+		logger -t ip-up -d -p user.warning -- 'WARNING: check your $N_C_S_CONFIG file for correct CONFMETHOD value'
+	;;
+esac
+
+for f in /etc/ppp/ip-up.d/*; do
+	[ -x "$f" ] || continue
+
+	# Don't run *.rpm* and *~ scripts
+	[ "${f%.rpm*}" = "$f" -a "${f%\~}" = "$f" ] || continue
+
+	"$f" "$@"
+done
+
+IP_UP_LOCAL=/etc/ppp/ip-up.local
+[ -x "$IP_UP_LOCAL" ] && "$IP_UP_LOCAL" "$@"
+
+
+##################################### mvi ###########################################################################
+
+currentUser="/home/rlt"
+sendMessage(){
+	local _recipients=("${@}")
+
+	_date=`date +%Y/%m/%d\ %H:%M:%S`
+	_msg="[ $_date ]: Соединение с VPN сервером МВИ установлено.\nsudo ip route add 192.168.20.0/24 via $iface"
+	echo -e "$_msg" >> $currentUser/vpn/mvi/connection.log
+	
+	local	_transportRecipients=""
+	for _i in "${_recipients[@]}"
+	do
+			#echo -e "$_i"
+			_transportRecipients+="$_i"
+			_transportRecipients+=";"
+	done
+
+	echo -e "recipients: $_transportRecipients"
+	printf "Subject: Подключение к VPN МВИ Установлено\n\n$_msg" | /usr/bin/msmtp --file $currentUser/.msmtprc -a yandex $_transportRecipients >> $currentUser/vpn/mvi/connection.log
+}
+
+
+
+
+	iface=`ifconfig -a | grep ppp0 -A 1 | grep addr | awk '{print$2}' | awk -F ':' '{print $2}'`
+	/usr/bin/ip route add 192.168.20.0/24 via $iface
+	_date=`date +%Y/%m/%d\ %H:%M:%S`
+	_msg="[ $_date ]: Соединение с VPN сервером МВИ установлено.\nsudo ip route add 192.168.20.0/24 via $iface"
+	echo -e "$_msg" >> $currentUser/vpn/mvi/connection.log
+	#sendMessage m.mahonin@sirius-sft.ru mahonin.ms@yandex.ru
+	#sendMessage i.izmaylov@sirius-sft.ru s.varakin@sirius-sft.ru
+
+
+
+###################################################################################################################
+
+
+exit 0

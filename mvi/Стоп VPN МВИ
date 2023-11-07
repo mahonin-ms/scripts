@@ -1,0 +1,41 @@
+#!/bin/bash
+
+stop(){
+	local ids=(`ps -aux | grep sstp | awk '{print $2}'`)
+	for _id in ${ids[@]}
+	do
+		echo -e "kill -9 $_id"
+		sudo kill -9 $_id
+	done
+
+	sudo ifconfig enp0s3 down
+	sudo ifconfig enp0s3 up
+
+	sudo chmod 666 $HOME/vpn/mvi/connection.log
+	#sendMessage m.mahonin@sirius-sft.ru mahonin.ms@yandex.ru
+	sendMessage i.izmaylov@sirius-sft.ru s.varakin@sirius-sft.ru
+
+	
+}
+
+sendMessage(){
+	local _recipients=("${@}")
+	_date=`date +%Y/%m/%d\ %H:%M:%S`
+	_msg="[ $_date ]: Соединение с VPN сервером МВИ закрыто"
+	echo -e "$_msg" >> $HOME/vpn/mvi/connection.log
+	
+	local	_transportRecipients=""
+	for _i in "${_recipients[@]}"
+	do
+			#echo -e "$_i"
+			_transportRecipients+="$_i"
+			_transportRecipients+=";"
+	done
+
+	echo -e "recipients: $_transportRecipients"
+	printf "Subject: Подключение к VPN МВИ Закрыто\n\n$_msg" | /usr/bin/msmtp --file $HOME/.msmtprc -a yandex $_transportRecipients >> $HOME/vpn/mvi/connection.log
+
+}
+
+stop
+

@@ -1,0 +1,9 @@
+#!/bin/bash
+
+#sudo ip route add 192.168.20.0/24 via ppp0
+sudo /usr/sbin/sstpc --ca-cert /home/rlt/vpn/mvi/cert.pem --cert-warn --save-server-route --user userext024 --password Ln6kR27w86 comitadt.tech:4443 --log-stdout --log-stderr --log-level 3 &
+
+#iface=`ifconfig -a | grep ppp0 -A 1 | grep addr | awk '{print$2}' | awk -F ':' '{print $2}'`
+#echo -e "sudo ip route add 192.168.20.0/24 via $iface"
+#sudo ip route add 192.168.20.0/24 via $iface
+
